@@ -1,0 +1,6 @@
+391/391 ━━━━━━━━━━━━━━━━━━━━ 5994s 15s/step - loss: 4.6137 - top1_accuracy: 0.0091 - top5_accuracy: 0.0455 - val_loss: 4.6052 - val_top1_accuracy: 0.0100 - val_top5_accuracy: 0.0500
+391/391 ━━━━━━━━━━━━━━━━━━━━ 6023s 15s/step - loss: 4.6056 - top1_accuracy: 0.0093 - top5_accuracy: 0.0445 - val_loss: 4.6052 - val_top1_accuracy: 0.0100 - val_top5_accuracy: 0.0500
+391/391 ━━━━━━━━━━━━━━━━━━━━ 6116s 16s/step - loss: 4.6056 - top1_accuracy: 0.0086 - top5_accuracy: 0.0452 - val_loss: 4.6052 - val_top1_accuracy: 0.0100 - val_top5_accuracy: 0.0500
+391/391 ━━━━━━━━━━━━━━━━━━━━ 6120s 16s/step - loss: 4.6056 - top1_accuracy: 0.0083 - top5_accuracy: 0.0441 - val_loss: 4.6052 - val_top1_accuracy: 0.0100 - val_top5_accuracy: 0.0500
+391/391 ━━━━━━━━━━━━━━━━━━━━ 6237s 16s/step - loss: 4.6056 - top1_accuracy: 0.0083 - top5_accuracy: 0.0438 - val_loss: 4.6052 - val_top1_accuracy: 0.0100 - val_top5_accuracy: 0.0500
+391/391 ━━━━━━━━━━━━━━━━━━━━ 6018s 15s/step - loss: 4.6056 - top1_accuracy: 0.0089 - top5_accuracy: 0.0459 - val_loss: 4.6052 - val_top1_accuracy: 0.0100 - val_top5_accuracy: 0.0500
