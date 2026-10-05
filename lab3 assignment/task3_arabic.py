@@ -59,7 +59,7 @@ print("TrainableSubsampling layer defined successfully.")
 
 # Get the directory where this python script is located
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "lenet5_mnist.keras")
+MODEL_PATH = os.path.join(BASE_DIR, "arabic_lenet5.keras")
 
 model = tf.keras.models.load_model(
     MODEL_PATH,
@@ -393,6 +393,10 @@ while True:
         prediction[0]
     )
 
+    arabic_digits = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"]
+
+    predicted_arabic = arabic_digits[predicted_digit]
+
 
     # Get confidence
 
@@ -419,8 +423,8 @@ while True:
     # --------------------------------------------------------
 
     text_prediction = (
-        f"Digit: {predicted_digit}"
-    )
+    f"Digit: {predicted_digit} ({predicted_arabic})"
+)
 
     text_confidence = (
         f"Confidence: "
