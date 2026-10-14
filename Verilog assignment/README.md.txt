@@ -16,7 +16,7 @@ The main behavior is:
 ## Files
 
 ```text
-design.v      # Original black-box module
+design.v      # the unchanged mystery module and the solution 
 soultion.v     # Reverse-engineered RTL
 test_bench.v   # Experiments testbench
 self_checking_tb.v   # Self-checking testbench
