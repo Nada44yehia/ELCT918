@@ -1,4 +1,3 @@
-
 // ============================================================
 // 1. VECTOR BUFFER
 // Reference: Paper Fig. 7(c) and Fig. 8
@@ -187,6 +186,7 @@ endmodule
 // Reference: Paper Fig. 8 (sequential accumulation of dot products)
 // Implementation choice: 32-bit accumulator and sign extension.
 // Accumulates the partial sums of one row.
+// (Unchanged: it already accepts one partial sum per cycle.)
 // ============================================================
 
 module accumulator (
@@ -269,10 +269,28 @@ module accumulator (
 
 endmodule
 
-//The controller has three main operating states:
-//- IDLE: waits for start and allows the testbench to load CSB data.
-//- SEND: presents one group of four weights and indices to the sparse PE.
-//- WAIT: allows the registered datapath and accumulator to finish processing the current group before moving to the next one.
+
+// ============================================================
+// CSB CONTROLLER  (PIPELINED VERSION)
+//
+// Change from the previous version:
+//   The old FSM alternated SEND -> WAIT for every group, so each
+//   group of 4 weights took 2 cycles (4 groups = 8 cycles), which
+//   cancelled the benefit of skipping the zero weights.
+//
+//   The datapath is already pipelined (weight registers + registered
+//   vector-buffer read -> MAC tree -> accumulator), so a new group
+//   can be issued EVERY cycle while the previous one is accumulated.
+//
+// States:
+// - IDLE : waits for start and allows the testbench to load CSB data.
+// - RUN  : issues one group per cycle (groups 0,1,2,3 -> 4 cycles).
+// - DRAIN: one cycle for the last group to leave the pipeline and
+//          reach the accumulator; keeps busy high until the row
+//          result is written.
+//
+// Latency (start edge -> row_done edge): 5 cycles  (was 8).
+// ============================================================
 module csb_controller (
     input  wire clk,
     input  wire rst_n,
@@ -318,9 +336,9 @@ module csb_controller (
     // ------------------------------------------------
     // 2. Controller states
     // ------------------------------------------------
-    localparam IDLE = 2'b00;
-    localparam SEND = 2'b01;
-    localparam WAIT = 2'b10;
+    localparam IDLE  = 2'b00;
+    localparam RUN   = 2'b01;
+    localparam DRAIN = 2'b10;
 
     reg [1:0] state;
     // Four groups: 0, 1, 2, 3
@@ -361,10 +379,11 @@ module csb_controller (
 
     // ------------------------------------------------
     // 5. Generate control signals
+    // A group is valid in every RUN cycle (back-to-back).
     // ------------------------------------------------
 
-    assign group_valid = (state == SEND);
-    assign last_group  = (state == SEND) &&
+    assign group_valid = (state == RUN);
+    assign last_group  = (state == RUN) &&
                          (group_count == 2'd3);
 
     // ------------------------------------------------
@@ -389,27 +408,28 @@ module csb_controller (
                 if (start) begin
                     group_count <= 2'd0;
                     busy        <= 1'b1;
-                    state       <= SEND;
+                    state       <= RUN;
                 end
             end
 
-            SEND: begin
-                // Present the current group to the datapath.
-                state <= WAIT;
-            end
-
-            WAIT: begin
-                // Allow the accumulator to consume the group.
-
+            RUN: begin
+                // Issue the current group and move to the next one
+                // in the very next cycle (no WAIT state).
                 if (group_count == 2'd3) begin
-                    state <= IDLE;
-                    busy  <= 1'b0;
-                    done  <= 1'b1;
+                    state <= DRAIN;
                 end
                 else begin
                     group_count <= group_count + 1'b1;
-                    state       <= SEND;
                 end
+            end
+
+            DRAIN: begin
+                // Last group is being accumulated this cycle;
+                // row_done and done rise together at the next edge.
+                state       <= IDLE;
+                group_count <= 2'd0;
+                busy        <= 1'b0;
+                done        <= 1'b1;
             end
 
             default: begin
@@ -431,6 +451,7 @@ endmodule
 // Reference: Paper Fig. 8
 // Connects the vector buffer, weight registers, MAC tree,
 // and accumulator to implement the sparse dot-product datapath.
+// (Unchanged.)
 // ============================================================
 
 
@@ -619,3 +640,91 @@ module sparse_pe (
 endmodule
 
 
+// Dense 4-lane baseline PE for one 32-element row.
+// Loads the same PRUNED dense row used by the sparse PE.
+// Processes 4 consecutive positions per cycle: 32 / 4 = 8 cycles.
+// (Unchanged.)
+module baseline_pe (
+    input  wire clk,
+    input  wire rst_n,
+
+    input  wire vec_we,
+    input  wire [4:0] vec_waddr,
+    input  wire signed [7:0] vec_wdata,
+
+    input  wire weight_we,
+    input  wire [4:0] weight_waddr,
+    input  wire signed [7:0] weight_wdata,
+
+    input  wire start,
+    output reg  busy,
+    output reg  done,
+    output reg signed [31:0] result
+);
+
+    reg signed [7:0] vector_mem [0:31];
+    reg signed [7:0] weight_mem [0:31];
+
+    reg [2:0] group_count; // 0..7, four elements per group
+    reg signed [31:0] accumulator;
+
+    wire signed [15:0] product0 =
+        weight_mem[{group_count, 2'b00}] *
+        vector_mem[{group_count, 2'b00}];
+    wire signed [15:0] product1 =
+        weight_mem[{group_count, 2'b01}] *
+        vector_mem[{group_count, 2'b01}];
+    wire signed [15:0] product2 =
+        weight_mem[{group_count, 2'b10}] *
+        vector_mem[{group_count, 2'b10}];
+    wire signed [15:0] product3 =
+        weight_mem[{group_count, 2'b11}] *
+        vector_mem[{group_count, 2'b11}];
+
+    wire signed [17:0] sum01 =
+        {{2{product0[15]}}, product0} +
+        {{2{product1[15]}}, product1};
+    wire signed [17:0] sum23 =
+        {{2{product2[15]}}, product2} +
+        {{2{product3[15]}}, product3};
+    wire signed [17:0] group_sum = sum01 + sum23;
+
+    wire signed [31:0] group_sum_ext =
+        {{14{group_sum[17]}}, group_sum};
+
+    always @(posedge clk ) begin
+        if (!rst_n) begin
+            busy         <= 1'b0;
+            done         <= 1'b0;
+            result       <= 32'sd0;
+            accumulator  <= 32'sd0;
+            group_count  <= 3'd0;
+        end else begin
+            done <= 1'b0;
+
+            // Memory loading can happen while the PE is idle.
+            if (vec_we)
+                vector_mem[vec_waddr] <= vec_wdata;
+
+            if (weight_we)
+                weight_mem[weight_waddr] <= weight_wdata;
+
+            if (start && !busy) begin
+                busy        <= 1'b1;
+                group_count <= 3'd0;
+                accumulator <= 32'sd0;
+            end else if (busy) begin
+                if (group_count == 3'd7) begin
+                    result      <= accumulator + group_sum_ext;
+                    accumulator <= 32'sd0;
+                    busy        <= 1'b0;
+                    done        <= 1'b1;
+                end else begin
+                    accumulator <= accumulator + group_sum_ext;
+                    group_count <= group_count + 1'b1;
+                end
+            end
+        end
+    end
+
+endmodule
